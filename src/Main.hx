@@ -63,17 +63,7 @@ class Main {
 			array.push(Std.random(800));
 		}
 
-		//and using audio stuff
-		//not sure if crash will occur without it
-		sound_counter -= 1;
-		if(sound_counter == 0) {
-			sound_counter = 5;
-			last_sound = kha.audio1.Audio.play(
-					Assets.sounds.audio_speak_june
-				);
-		}
 		allocate_bunch();
-
 	}
 
 	//simple array of poly object
@@ -100,23 +90,6 @@ class Main {
 			n2.init();
 			tests.push(n2);
 		}
-
-		//just the thing I do in my game
-		//idk if it will crash without it but at least it takes some time and allocations
-		haxe.ds.ArraySort.sort(tests, function(a1, b1) {
-			var b = cast(b1, TestT);
-			var a = cast(a1, TestT);
-			if(a._t == b._t) {
-				return 0;
-			}
-
-			if(a._t > b._t) {
-				return -1;
-			} else {
-				return 1;
-			}
-		});
-
 	}
 
 	static function render(frames: Array<Framebuffer>): Void {
@@ -126,11 +99,6 @@ class Main {
 		var g = frames[0].g2;
 		g.begin(true, 0xbbbbbb);
 
-		var c: Int = 0;
-			for(j in tests) {
-				var i = cast(j, TestT);
-				g.drawImage(Assets.images.sprites_frosh, i.array[0], i.array[1]);
-			}
 		g.end();
 	}
 }
