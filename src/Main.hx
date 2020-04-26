@@ -19,35 +19,16 @@ class Main {
 	}
 	
 	static function init() {
-		Assets.loadEverything(() -> {
+		Scheduler.addTimeTask(() -> {
+			update();
+		}, 0, 1/60);
 
-			//will take something around 2gb in ram 
-			take_ram(20);
-
-			Scheduler.addTimeTask(() -> {
-				update();
-			}, 0, 1/60);
-
-			//init a lot of data
-			tests = [];
-			for(i in 0...1400) {
-				var a = new TestT();
-				a.init();
-				tests.push(a);
-			}
-
-			System.notifyOnFrames((frames) -> {
-				render(frames);
-			});
-		});
-	}
-
-	//just to take some space in ram
-	static var images: Array<kha.Image>;
-	static function take_ram(size: Int): Void {
-		images = [];
-		for(i in 0...size) {
-			images.push(kha.Image.createRenderTarget(4096, 4096));
+		//init a lot of data
+		tests = [];
+		for(i in 0...1400) {
+			var a = new TestT();
+			a.init();
+			tests.push(a);
 		}
 	}
 
@@ -90,15 +71,5 @@ class Main {
 			n2.init();
 			tests.push(n2);
 		}
-	}
-
-	static function render(frames: Array<Framebuffer>): Void {
-		//simple rendering
-		//I have my own g2 implementation, but I found out that it will crash with g2 too
-
-		var g = frames[0].g2;
-		g.begin(true, 0xbbbbbb);
-
-		g.end();
 	}
 }
