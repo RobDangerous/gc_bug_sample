@@ -1,5 +1,0 @@
-package t;
-
-class Base {
-	
-}

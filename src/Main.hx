@@ -1,11 +1,22 @@
 package;
 
-import kha.System;
+class TestT {
+	public var array: Array<Int>;
+	public var _t: Int = 0;
+	public function new() {
+		var size: Int = 6 + Std.random(50);
+		array = [for(i in 0...size) 256];
+		_t = 0;
+	}
+	public function init() {
 
-import kha.Assets;
-import kha.Framebuffer;
-import t.TestT;
-import t.Base;
+		for(i in 0...10) {
+			array = [];
+			array.push(Std.random(1280));
+			array.push(Std.random(800));
+		}
+	}
+}
 
 class TimeTask {
 	public var task: Void -> Bool;
@@ -25,38 +36,15 @@ class TimeTask {
 	}
 }
 
-class FrameTask {
-	public var task: Void -> Bool;
-	public var priority: Int;
-	public var id: Int;
-	public var active: Bool;
-	public var paused: Bool;
-	
-	public function new(task: Void -> Bool, priority: Int, id: Int) {
-		this.task = task;
-		this.priority = priority;
-		this.id = id;
-		active = true;
-		paused = false;
-	}
-}
-
 class Scheduler {
 	private static var timeTasks: Array<TimeTask>;
 	private static var pausedTimeTasks: Array<TimeTask>;
-	private static var outdatedTimeTasks: Array<TimeTask>;
-	private static var timeTasksScratchpad: Array<TimeTask>;
-	private static inline var timeWarpSaveTime: Float = 10.0;
 
-	private static var frameTasks: Array<FrameTask>;	
-	private static var toDeleteFrame : Array<FrameTask>;
-	
 	private static var current: Float;
 	private static var lastTime: Float;
 	
 	private static var frame_tasks_sorted: Bool;
 	private static var stopped: Bool;
-	private static var vsync: Bool;
 
 	private static var onedifhz: Float;
 
@@ -87,16 +75,10 @@ class Scheduler {
 		
 		timeTasks = [];
 		pausedTimeTasks = [];
-		outdatedTimeTasks = [];
-		timeTasksScratchpad = [];
-		frameTasks = [];
-		toDeleteFrame = [];
 	}
 	
 	public static function start(restartTimers : Bool = false): Void {
-		vsync = true;
 		var hz = 60;
-		if (hz >= 57 && hz <= 63) hz = 60;
 		onedifhz = 1.0 / hz;
 
 		stopped = false;
@@ -107,10 +89,6 @@ class Scheduler {
 		if (restartTimers) {
 			for (timeTask in timeTasks) {
 				timeTask.paused = false;
-			}
-			
-			for (frameTask in frameTasks) {
-				frameTask.paused = false;
 			}
 		}
 	}
@@ -123,60 +101,6 @@ class Scheduler {
 		return stopped;
 	}
 
-	private static function warpTimeTasksBack(time: Float, tasks: Array<TimeTask>): Void {
-		for (timeTask in tasks) {
-			if (timeTask.start >= time) {
-				timeTask.next = timeTask.start;
-			}
-			else if (timeTask.period > 0) {
-				var sinceStart = time - timeTask.start;
-				var times = Math.ceil(sinceStart / timeTask.period);
-				timeTask.next = timeTask.start + times * timeTask.period;
-			}
-		}
-	}
-
-	public static function warp(time: Float): Void {
-		if (time < lastTime) {
-			current = time;
-			lastTime = time;
-			
-			warpTimeTasksBack(time, outdatedTimeTasks);
-			warpTimeTasksBack(time, timeTasks);
-			
-			for (task in outdatedTimeTasks) {
-				if (task.next >= time) {
-					timeTasksScratchpad.push(task);
-				}
-			}
-			for (task in timeTasksScratchpad) {
-				outdatedTimeTasks.remove(task);
-			}
-			for (task in timeTasksScratchpad) {
-				insertSorted(timeTasks, task);
-			}
-			while (timeTasksScratchpad.length > 0) {
-				timeTasksScratchpad.remove(timeTasksScratchpad[0]);
-			}
-		}
-		else if (time > lastTime) {
-			// TODO: Changing startTime line prevents clients from falling into a
-			// warp-forward-then-wait-for-systemtime-to-catch-up-loop that causes
-			// choppy movement (e.g. every 3rd frame forward 3 times).
-			// But it causes backwards jumps in originally constant movements.
-			// And on HTML5 packets are received while no frames are executed,
-			// which causes the client to overtakes the server and then move
-			// farther away with each packet while being unable to synch back
-			// (backwards warping is not allowed to change startTime).
-			startTime -= (time - lastTime);
-			
-			current = time;
-			lastTime = time;
-			
-			executeTimeTasks(time);
-		}
-	}
-	
 	public static function executeFrame(): Void {
 		var now: Float = realTime() - startTime;
 		var delta = now - lastTime;
@@ -184,57 +108,31 @@ class Scheduler {
 		var frameEnd: Float = current;
 		
 		if (delta >= 0) {
-			if (kha.netsync.Session.the() == null) {
-				//tdif = 1.0 / 60.0; //force fixed frame rate
-				
-				if (delta > maxframetime) {
-					startTime += delta - maxframetime;
-					delta = maxframetime;
-					frameEnd += delta;
-				}
-				else {
-					if (vsync) {
-						// this is optimized not to run at exact speed
-						// but to run as fluid as possible
-						var realdif = onedifhz;
-						while (realdif < delta - onedifhz) {
-							realdif += onedifhz;
-						}
-						
-						delta = realdif;
-						for (i in 0...DIF_COUNT - 2) {
-							delta += deltas[i];
-							deltas[i] = deltas[i + 1];
-						}
-						delta += deltas[DIF_COUNT - 2];
-						delta /= DIF_COUNT;
-						deltas[DIF_COUNT - 2] = realdif;
-						
-						frameEnd += delta;
-					}
-					else {
-						for (i in 0...DIF_COUNT - 1) {
-							deltas[i] = deltas[i + 1];
-						}
-						deltas[DIF_COUNT - 1] = delta;
-						
-						var next: Float = 0;
-						for (i in 0...DIF_COUNT) {
-							next += deltas[i];
-						}
-						next /= DIF_COUNT;
-						
-						//delta = interpolated_delta; // average the frame end estimation
-						
-						//lastTime = now;
-						frameEnd += next;
-					}
-				}
-			}
-			else {
+			//tdif = 1.0 / 60.0; //force fixed frame rate
+			
+			if (delta > maxframetime) {
+				startTime += delta - maxframetime;
+				delta = maxframetime;
 				frameEnd += delta;
 			}
-			
+			else {
+				var realdif = onedifhz;
+				while (realdif < delta - onedifhz) {
+					realdif += onedifhz;
+				}
+				
+				delta = realdif;
+				for (i in 0...DIF_COUNT - 2) {
+					delta += deltas[i];
+					deltas[i] = deltas[i + 1];
+				}
+				delta += deltas[DIF_COUNT - 2];
+				delta /= DIF_COUNT;
+				deltas[DIF_COUNT - 2] = realdif;
+				
+				frameEnd += delta;
+			}
+
 			lastTime = frameEnd;
 			if (!stopped) { // Stop simulation time
 				current = frameEnd;
@@ -253,36 +151,6 @@ class Scheduler {
 			}
 
 			executeTimeTasks(frameEnd);
-
-			// Maintain outdated task list
-			for (task in outdatedTimeTasks) {
-				if (task.next < frameEnd - timeWarpSaveTime) {
-					timeTasksScratchpad.push(task);
-				}
-			}
-			for (task in timeTasksScratchpad) {
-				outdatedTimeTasks.remove(task);
-			}
-			while (timeTasksScratchpad.length > 0) {
-				timeTasksScratchpad.remove(timeTasksScratchpad[0]);
-			}
-		}
-
-		sortFrameTasks();
-		for (frameTask in frameTasks) {
-			if (!stopped && !frameTask.paused && frameTask.active) {
-				if (!frameTask.task()) frameTask.active = false;
-			}
-		}
-		
-		for (frameTask in frameTasks) {
-			if (!frameTask.active) {
-				toDeleteFrame.push(frameTask);
-			}
-		}
-		
-		while (toDeleteFrame.length > 0) {
-			frameTasks.remove(toDeleteFrame.pop());
 		}
 	}
 
@@ -298,13 +166,6 @@ class Scheduler {
 					if (activeTimeTask.period > 0 && (activeTimeTask.duration == 0 || activeTimeTask.duration >= activeTimeTask.start + activeTimeTask.next)) {
 						insertSorted(timeTasks, activeTimeTask);
 					}
-					else {
-						archiveTimeTask(activeTimeTask, until);
-					}
-				}
-				else {
-					activeTimeTask.active = false;
-					archiveTimeTask(activeTimeTask, until);
 				}
 			}
 			else {
@@ -314,31 +175,19 @@ class Scheduler {
 		activeTimeTask = null;
 	}
 
-	private static function archiveTimeTask(timeTask: TimeTask, frameEnd: Float) {
-		#if sys_server
-		if (timeTask.next > frameEnd - timeWarpSaveTime) {
-			outdatedTimeTasks.push(timeTask);
-		}
-		#end
-	}
-
-	/**
-	 * An approximation of the amount of time (in fractional seconds) that elapsed while the game was active.
-	 * This value is optimized for achieving smooth framerates.
-	 */
 	public static function time(): Float {
 		return current;
 	}
 	
-	/**
-	 * The amount of time (in fractional seconds) that elapsed since the game started.
-	*/
+	static var lastRealTime: Float = 0.0;
+
 	public static function realTime(): Float {
-		return System.time;
+		lastRealTime += 0.1;
+		return lastRealTime;
 	}
 	
 	public static function resetTime(): Void {
-		var now = System.time;
+		var now = realTime();
 		var dif = now - startTime;
 		startTime = now;
 		for (timeTask in timeTasks) {
@@ -350,37 +199,6 @@ class Scheduler {
 		lastTime = 0;
 	}
 	
-	public static function addBreakableFrameTask(task: Void -> Bool, priority: Int): Int {
-		frameTasks.push(new FrameTask(task, priority, ++currentFrameTaskId));
-		frame_tasks_sorted = false;
-		return currentFrameTaskId;
-	}
-	
-	public static function addFrameTask(task: Void -> Void, priority: Int): Int {
-		return addBreakableFrameTask(function () {
-			task();
-			return true;
-		}, priority);
-	}
-	
-	public static function pauseFrameTask(id: Int, paused: Bool): Void {
-		for (frameTask in frameTasks) {
-			if (frameTask.id == id) {
-				frameTask.paused = paused;
-				break;
-			}
-		}
-	}
-	
-	public static function removeFrameTask(id: Int): Void {
-		for (frameTask in frameTasks) {
-			if (frameTask.id == id) {
-				frameTask.active = false;
-				break;
-			}
-		}
-	}
-
 	public static function generateGroupId(): Int {
 		return ++currentGroupId;
 	}
@@ -466,37 +284,6 @@ class Scheduler {
 		}
 	}
 
-	public static function removeTimeTask(id: Int): Void {
-		var timeTask = getTimeTask(id);
-		if (timeTask != null) {
-			timeTask.active = false;
-			timeTasks.remove(timeTask);
-		}
-	}
-	
-	public static function removeTimeTasks(groupId: Int): Void {
-		for (timeTask in timeTasks) {
-			if (timeTask.groupId == groupId) {
-				timeTask.active = false;
-				timeTasksScratchpad.push(timeTask);				
-			}
-		}
-		for (timeTask in timeTasksScratchpad) {
-			timeTasks.remove(timeTask);
-		}
-		while (timeTasksScratchpad.length > 0) {
-			timeTasksScratchpad.remove(timeTasksScratchpad[0]);
-		}
-
-		if (activeTimeTask != null && activeTimeTask.groupId == groupId) {
-			activeTimeTask.active = false;
-		}
-	}
-
-	public static function numTasksInSchedule(): Int {
-		return timeTasks.length + frameTasks.length;
-	}
-	
 	private static function insertSorted(list: Array<TimeTask>, task: TimeTask) {
 		for (i in 0...list.length) {
 			if (list[i].next > task.next) {
@@ -506,23 +293,11 @@ class Scheduler {
 		}
 		list.push(task);
 	}
-	
-	private static function sortFrameTasks(): Void {
-		if (frame_tasks_sorted) return;
-		frameTasks.sort(function (a: FrameTask, b: FrameTask): Int {
-			return a.priority > b.priority ? 1 : ((a.priority < b.priority) ? -1 : 0);
-		});
-		frame_tasks_sorted = true;
-	}
 }
 
 class Main {
 	public static function main() {
-		System.start({title: "hxcpp please", width: 1280,height: 800, window: {	windowFeatures: FeatureMinimizable,	mode: kha.WindowMode.Windowed}}, 
-			function (a: kha.Window) {
-				init();
-			}	
-		);
+		init();
 	}
 	
 	static function init() {
@@ -547,7 +322,6 @@ class Main {
 
 	static var array: Array<Float> = [];
 	static var sound_counter: Int = 5;
-	static var last_sound: kha.audio1.AudioChannel;
 
 	static function update(): Void {
 		//just some random calculations and allocations to take some time
@@ -562,7 +336,7 @@ class Main {
 
 	//simple array of poly object
 	//I use something like that in my game so here it is
-	static var tests: Array<Base>;
+	static var tests: Array<TestT>;
 	static function allocate_bunch() {
 		//bunch of allocations that we are not using
 		for(i in 0...250) {
