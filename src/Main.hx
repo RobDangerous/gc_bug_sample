@@ -527,6 +527,7 @@ class Main {
 	
 	static function init() {
 		Scheduler.init();
+		Scheduler.start();
 		Scheduler.addTimeTask(() -> {
 			update();
 		}, 0, 1/60);
