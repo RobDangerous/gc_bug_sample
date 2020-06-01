@@ -20,24 +20,10 @@ class TestT {
 }
 
 class Main {
-	static var timeTasks: Array<Void -> Void>;
-
-	static function addTimeTask(task: Void -> Void): Void {
-		timeTasks.push(task);
-	}
-	
-	static function executeFrame(): Void {
-		var activeTimeTask = timeTasks[0];
-		timeTasks.remove(activeTimeTask);
-		activeTimeTask();
-		timeTasks.push(activeTimeTask);
-	}
+	static var task: Void -> Void;
 
 	public static function main() {
-		timeTasks = [];
-		addTimeTask(() -> {
-			update();
-		});
+		task = update;
 
 		//init a lot of data
 		tests = [];
@@ -48,7 +34,7 @@ class Main {
 		}
 
 		while (true) {
-			executeFrame();
+			task();
 		}
 	}
 
