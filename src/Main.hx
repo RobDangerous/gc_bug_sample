@@ -9,8 +9,7 @@ class TestT {
 		_t = 0;
 	}
 	public function init() {
-
-		for(i in 0...10) {
+		for (i in 0...10) {
 			array = [];
 			array.push(Std.random(1280));
 			array.push(Std.random(800));
@@ -23,13 +22,7 @@ class TimeTask {
 	
 	public var start: Float;
 	public var period: Float;
-	public var duration: Float;
 	public var next: Float;
-	
-	public var id: Int;
-	public var groupId: Int;
-	public var active: Bool;
-	public var paused: Bool;
 	
 	public function new() {
 		
@@ -38,147 +31,42 @@ class TimeTask {
 
 class Scheduler {
 	private static var timeTasks: Array<TimeTask>;
-	private static var pausedTimeTasks: Array<TimeTask>;
-
 	private static var current: Float;
 	private static var lastTime: Float;
-	
-	private static var frame_tasks_sorted: Bool;
-	private static var stopped: Bool;
-
-	private static var onedifhz: Float;
-
-	private static var currentFrameTaskId: Int;
-	private static var currentTimeTaskId: Int;
-	private static var currentGroupId: Int;
-
-	private static var DIF_COUNT = 3;
-	private static var maxframetime = 0.5;
-	
-	private static var deltas: Array<Float>;
-	
 	private static var startTime: Float = 0;
-	
-	private static var activeTimeTask: TimeTask = null;
-	
+
 	public static function init(): Void {
-		deltas = new Array<Float>();
-		for (i in 0...DIF_COUNT) deltas[i] = 0;
-		
-		stopped = true;
-		frame_tasks_sorted = true;
 		current = lastTime = realTime();
-
-		currentFrameTaskId = 0;
-		currentTimeTaskId  = 0;
-		currentGroupId     = 0;
-		
 		timeTasks = [];
-		pausedTimeTasks = [];
-	}
-	
-	public static function start(restartTimers : Bool = false): Void {
-		var hz = 60;
-		onedifhz = 1.0 / hz;
-
-		stopped = false;
 		resetTime();
 		lastTime = realTime() - startTime;
-		for (i in 0...DIF_COUNT) deltas[i] = 0;
-		
-		if (restartTimers) {
-			for (timeTask in timeTasks) {
-				timeTask.paused = false;
-			}
-		}
 	}
 	
-	public static function stop(): Void {
-		stopped = true;
-	}
-	
-	public static function isStopped(): Bool {
-		return stopped;
-	}
-
 	public static function executeFrame(): Void {
 		var now: Float = realTime() - startTime;
-		var delta = now - lastTime;
-		
+		var delta = 0.1;
 		var frameEnd: Float = current;
-		
-		if (delta >= 0) {
-			//tdif = 1.0 / 60.0; //force fixed frame rate
-			
-			if (delta > maxframetime) {
-				startTime += delta - maxframetime;
-				delta = maxframetime;
-				frameEnd += delta;
-			}
-			else {
-				var realdif = onedifhz;
-				while (realdif < delta - onedifhz) {
-					realdif += onedifhz;
-				}
-				
-				delta = realdif;
-				for (i in 0...DIF_COUNT - 2) {
-					delta += deltas[i];
-					deltas[i] = deltas[i + 1];
-				}
-				delta += deltas[DIF_COUNT - 2];
-				delta /= DIF_COUNT;
-				deltas[DIF_COUNT - 2] = realdif;
-				
-				frameEnd += delta;
-			}
-
-			lastTime = frameEnd;
-			if (!stopped) { // Stop simulation time
-				current = frameEnd;
-			}
-			
-			// Extend endpoint by paused time (individually paused tasks)
-			for (pausedTask in pausedTimeTasks) {
-				pausedTask.next += delta;
-			}
-
-			if (stopped) {
-				// Extend endpoint by paused time (running tasks)
-				for (timeTask in timeTasks) {
-					timeTask.next += delta;
-				}
-			}
-
-			executeTimeTasks(frameEnd);
-		}
+		frameEnd += delta;
+		lastTime = frameEnd;
+		current = frameEnd;
+		executeTimeTasks(frameEnd);
 	}
 
 	private static function executeTimeTasks(until: Float) {
 		while (timeTasks.length > 0) {
-			activeTimeTask = timeTasks[0];
-			
+			var activeTimeTask = timeTasks[0];
 			if (activeTimeTask.next <= until) {
 				activeTimeTask.next += activeTimeTask.period;
 				timeTasks.remove(activeTimeTask);
-				
-				if (activeTimeTask.active && activeTimeTask.task()) {
-					if (activeTimeTask.period > 0 && (activeTimeTask.duration == 0 || activeTimeTask.duration >= activeTimeTask.start + activeTimeTask.next)) {
-						insertSorted(timeTasks, activeTimeTask);
-					}
-				}
+				activeTimeTask.task();
+				timeTasks.push(activeTimeTask);
 			}
 			else {
 				break;
 			}
 		}
-		activeTimeTask = null;
 	}
 
-	public static function time(): Float {
-		return current;
-	}
-	
 	static var lastRealTime: Float = 0.0;
 
 	public static function realTime(): Float {
@@ -194,115 +82,39 @@ class Scheduler {
 			timeTask.start -= dif;
 			timeTask.next -= dif;
 		}
-		for (i in 0...DIF_COUNT) deltas[i] = 0;
 		current = 0;
 		lastTime = 0;
 	}
 	
-	public static function generateGroupId(): Int {
-		return ++currentGroupId;
-	}
-	
-	public static function addBreakableTimeTaskToGroup(groupId: Int, task: Void -> Bool, start: Float, period: Float = 0, duration: Float = 0): Int {
+	public static function addBreakableTimeTaskToGroup(task: Void -> Bool, start: Float, period: Float): Int {
 		var t = new TimeTask();
-		t.active = true;
 		t.task = task;
-		t.id = ++currentTimeTaskId;
-		t.groupId = groupId;
-
 		t.start = current + start;
-		t.period = 0;
-		if (period != 0) t.period = period;
-		t.duration = 0; //infinite
-		if (duration != 0) t.duration = t.start + duration;
-
+		t.period = period;
 		t.next = t.start;
-		insertSorted(timeTasks, t);
-		return t.id;
+		timeTasks.push(t);
+		return 0;
 	}
 	
-	public static function addTimeTaskToGroup(groupId: Int, task: Void -> Void, start: Float, period: Float = 0, duration: Float = 0): Int {
-		return addBreakableTimeTaskToGroup(groupId, function () {
+	public static function addTimeTaskToGroup(task: Void -> Void, start: Float, period: Float): Int {
+		return addBreakableTimeTaskToGroup(function () {
 			task();
 			return true;
-		}, start, period, duration);
+		}, start, period);
 	}
 	
-	public static function addBreakableTimeTask(task: Void -> Bool, start: Float, period: Float = 0, duration: Float = 0): Int {
-		return addBreakableTimeTaskToGroup(0, task, start, period, duration);
+	public static function addBreakableTimeTask(task: Void -> Bool, start: Float, period: Float): Int {
+		return addBreakableTimeTaskToGroup(task, start, period);
 	}
 	
-	public static function addTimeTask(task: Void -> Void, start: Float, period: Float = 0, duration: Float = 0): Int {
-		return addTimeTaskToGroup(0, task, start, period, duration);
-	}
-
-	private static function getTimeTask(id: Int): TimeTask {
-		if (activeTimeTask != null && activeTimeTask.id == id) return activeTimeTask;
-		for (timeTask in timeTasks) {
-			if (timeTask.id == id) {
-				return timeTask;
-			}
-		}
-		for (timeTask in pausedTimeTasks) {
-			if (timeTask.id == id) {
-				return timeTask;
-			}
-		}
-		return null;
-	}
-
-	public static function pauseTimeTask(id: Int, paused: Bool): Void {
-		var timeTask = getTimeTask(id);
-		if (timeTask != null) {
-			pauseRunningTimeTask(timeTask, paused);
-		}
-		if (activeTimeTask != null && activeTimeTask.id == id) {
-			activeTimeTask.paused = paused;
-		}
-	}
-
-	private static function pauseRunningTimeTask(timeTask: TimeTask, paused: Bool): Void {
-		timeTask.paused = paused;
-		if (paused) {
-			timeTasks.remove(timeTask);
-			pausedTimeTasks.push(timeTask);
-		}
-		else {
-			insertSorted(timeTasks, timeTask);
-			pausedTimeTasks.remove(timeTask);
-		}
-	}
-	
-	public static function pauseTimeTasks(groupId: Int, paused: Bool): Void {
-		for (timeTask in timeTasks) {
-			if (timeTask.groupId == groupId) {
-				pauseRunningTimeTask(timeTask, paused);
-			}
-		}
-		if (activeTimeTask != null && activeTimeTask.groupId == groupId) {
-			activeTimeTask.paused = paused;
-		}
-	}
-
-	private static function insertSorted(list: Array<TimeTask>, task: TimeTask) {
-		for (i in 0...list.length) {
-			if (list[i].next > task.next) {
-				list.insert(i, task);
-				return;
-			}
-		}
-		list.push(task);
+	public static function addTimeTask(task: Void -> Void, start: Float, period: Float): Int {
+		return addTimeTaskToGroup(task, start, period);
 	}
 }
 
 class Main {
 	public static function main() {
-		init();
-	}
-	
-	static function init() {
 		Scheduler.init();
-		Scheduler.start();
 		Scheduler.addTimeTask(() -> {
 			update();
 		}, 0, 1/60);
@@ -321,7 +133,6 @@ class Main {
 	}
 
 	static var array: Array<Float> = [];
-	static var sound_counter: Int = 5;
 
 	static function update(): Void {
 		//just some random calculations and allocations to take some time
