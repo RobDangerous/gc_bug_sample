@@ -1,34 +1,5 @@
 package;
 
-class TimeTask {
-	public var task: Void -> Void;
-	
-	public function new() {
-		
-	}
-}
-
-class Scheduler {
-	static var timeTasks: Array<TimeTask>;
-
-	public static function init(): Void {
-		timeTasks = [];
-	}
-
-	public static function addTimeTask(task: Void -> Void): Void {
-		var t = new TimeTask();
-		t.task = task;
-		timeTasks.push(t);
-	}
-	
-	public static function executeFrame(): Void {
-		var activeTimeTask = timeTasks[0];
-		timeTasks.remove(activeTimeTask);
-		activeTimeTask.task();
-		timeTasks.push(activeTimeTask);
-	}
-}
-
 class TestT {
 	public var array: Array<Int>;
 	public var _t: Int = 0;
@@ -38,7 +9,7 @@ class TestT {
 		array = [for(i in 0...size) 256];
 		_t = 0;
 	}
-	
+
 	public function init() {
 		for (i in 0...10) {
 			array = [];
@@ -49,9 +20,22 @@ class TestT {
 }
 
 class Main {
+	static var timeTasks: Array<Void -> Void>;
+
+	static function addTimeTask(task: Void -> Void): Void {
+		timeTasks.push(task);
+	}
+	
+	static function executeFrame(): Void {
+		var activeTimeTask = timeTasks[0];
+		timeTasks.remove(activeTimeTask);
+		activeTimeTask();
+		timeTasks.push(activeTimeTask);
+	}
+
 	public static function main() {
-		Scheduler.init();
-		Scheduler.addTimeTask(() -> {
+		timeTasks = [];
+		addTimeTask(() -> {
 			update();
 		});
 
@@ -64,7 +48,7 @@ class Main {
 		}
 
 		while (true) {
-			Scheduler.executeFrame();
+			executeFrame();
 		}
 	}
 
