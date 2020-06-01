@@ -1,13 +1,44 @@
 package;
 
+class TimeTask {
+	public var task: Void -> Void;
+	
+	public function new() {
+		
+	}
+}
+
+class Scheduler {
+	static var timeTasks: Array<TimeTask>;
+
+	public static function init(): Void {
+		timeTasks = [];
+	}
+
+	public static function addTimeTask(task: Void -> Void): Void {
+		var t = new TimeTask();
+		t.task = task;
+		timeTasks.push(t);
+	}
+	
+	public static function executeFrame(): Void {
+		var activeTimeTask = timeTasks[0];
+		timeTasks.remove(activeTimeTask);
+		activeTimeTask.task();
+		timeTasks.push(activeTimeTask);
+	}
+}
+
 class TestT {
 	public var array: Array<Int>;
 	public var _t: Int = 0;
+
 	public function new() {
 		var size: Int = 6 + Std.random(50);
 		array = [for(i in 0...size) 256];
 		_t = 0;
 	}
+	
 	public function init() {
 		for (i in 0...10) {
 			array = [];
@@ -17,107 +48,12 @@ class TestT {
 	}
 }
 
-class TimeTask {
-	public var task: Void -> Bool;
-	
-	public var start: Float;
-	public var period: Float;
-	public var next: Float;
-	
-	public function new() {
-		
-	}
-}
-
-class Scheduler {
-	private static var timeTasks: Array<TimeTask>;
-	private static var current: Float;
-	private static var lastTime: Float;
-	private static var startTime: Float = 0;
-
-	public static function init(): Void {
-		current = lastTime = realTime();
-		timeTasks = [];
-		resetTime();
-		lastTime = realTime() - startTime;
-	}
-	
-	public static function executeFrame(): Void {
-		var now: Float = realTime() - startTime;
-		var delta = 0.1;
-		var frameEnd: Float = current;
-		frameEnd += delta;
-		lastTime = frameEnd;
-		current = frameEnd;
-		executeTimeTasks(frameEnd);
-	}
-
-	private static function executeTimeTasks(until: Float) {
-		while (timeTasks.length > 0) {
-			var activeTimeTask = timeTasks[0];
-			if (activeTimeTask.next <= until) {
-				activeTimeTask.next += activeTimeTask.period;
-				timeTasks.remove(activeTimeTask);
-				activeTimeTask.task();
-				timeTasks.push(activeTimeTask);
-			}
-			else {
-				break;
-			}
-		}
-	}
-
-	static var lastRealTime: Float = 0.0;
-
-	public static function realTime(): Float {
-		lastRealTime += 0.1;
-		return lastRealTime;
-	}
-	
-	public static function resetTime(): Void {
-		var now = realTime();
-		var dif = now - startTime;
-		startTime = now;
-		for (timeTask in timeTasks) {
-			timeTask.start -= dif;
-			timeTask.next -= dif;
-		}
-		current = 0;
-		lastTime = 0;
-	}
-	
-	public static function addBreakableTimeTaskToGroup(task: Void -> Bool, start: Float, period: Float): Int {
-		var t = new TimeTask();
-		t.task = task;
-		t.start = current + start;
-		t.period = period;
-		t.next = t.start;
-		timeTasks.push(t);
-		return 0;
-	}
-	
-	public static function addTimeTaskToGroup(task: Void -> Void, start: Float, period: Float): Int {
-		return addBreakableTimeTaskToGroup(function () {
-			task();
-			return true;
-		}, start, period);
-	}
-	
-	public static function addBreakableTimeTask(task: Void -> Bool, start: Float, period: Float): Int {
-		return addBreakableTimeTaskToGroup(task, start, period);
-	}
-	
-	public static function addTimeTask(task: Void -> Void, start: Float, period: Float): Int {
-		return addTimeTaskToGroup(task, start, period);
-	}
-}
-
 class Main {
 	public static function main() {
 		Scheduler.init();
 		Scheduler.addTimeTask(() -> {
 			update();
-		}, 0, 1/60);
+		});
 
 		//init a lot of data
 		tests = [];
@@ -148,6 +84,7 @@ class Main {
 	//simple array of poly object
 	//I use something like that in my game so here it is
 	static var tests: Array<TestT>;
+
 	static function allocate_bunch() {
 		//bunch of allocations that we are not using
 		for(i in 0...250) {
