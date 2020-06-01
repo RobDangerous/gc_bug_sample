@@ -20,11 +20,7 @@ class TestT {
 }
 
 class Main {
-	static var task: Void -> Void;
-
 	public static function main() {
-		task = update;
-
 		//init a lot of data
 		tests = [];
 		for(i in 0...1400) {
@@ -34,7 +30,7 @@ class Main {
 		}
 
 		while (true) {
-			task();
+			update();
 		}
 	}
 
